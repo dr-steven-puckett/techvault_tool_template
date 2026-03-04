@@ -15,6 +15,7 @@ This tool MUST be deterministic:
 - Stable pagination with stable tie-breakers.
 - No reliance on dict/set iteration order.
 - Identical inputs → byte-identical JSON outputs (canonical JSON serialization rules).
+- Input order independence: shuffled equivalent inputs MUST yield identical outputs.
 - No LLM usage. No orchestration frameworks. No background jobs.
 
 ### 0.1 Canonical JSON rules
@@ -23,23 +24,45 @@ This tool MUST be deterministic:
 - No NaN/Infinity
 - Stable float formatting (avoid floats when possible; prefer ints/strings)
 - All output objects must have stable key ordering (enforced via canonical dump)
+- CLI output is JSON-only to stdout; errors are emitted to stderr only.
+
+### 0.2 Deterministic hash check (recommended standard)
+- Tool responses SHOULD include `response_hash`.
+- `response_hash` MUST be computed as `sha256(canonical_json_without_hash)`.
+- Hash input excludes the `response_hash` field itself.
+- When present, `response_hash` MUST be identical across API and CLI for identical logical responses.
 
 ---
 
-## 1) Purpose and Scope
+## 1) Core Architecture (Mandatory)
 
-### 1.1 Purpose
+Every TechVault tool MUST implement three interfaces over one canonical logic layer:
+
+- **Service Layer (`core/service.py`)**: canonical deterministic logic.
+- **FastAPI Router (`api/router.py`)**: integration adapter.
+- **CLI Interface (`cli/main.py`)**: standalone execution and debugging adapter.
+
+Rules:
+- No duplicated logic across API and CLI.
+- API and CLI MUST call the same service functions.
+- Identical logical inputs MUST produce byte-identical JSON outputs.
+
+---
+
+## 2) Purpose and Scope
+
+### 2.1 Purpose
 Describe what this tool does in 1–2 sentences.
 
-### 1.2 In scope
+### 2.2 In scope
 Bullets.
 
-### 1.3 Out of scope / non-goals
+### 2.3 Out of scope / non-goals
 Bullets (explicitly excludes synthesis, LLM calls, async workers).
 
 ---
 
-## 2) Repository Layout (Tool Repo Standard)
+## 3) Repository Layout (Tool Repo Standard)
 
 Minimum structure:
 
@@ -50,7 +73,9 @@ Minimum structure:
   docs/
     TOOL_<NAME>_SOT.md
     TOOL_<NAME>_EXECUTION_PLAN.md
-    TOOL_<NAME>_ROADMAP.md   # optional
+    TOOL_<NAME>_ROADMAP.md
+    TOOL_TEMPLATE.md
+    prompts/
   <tool_package>/
     __init__.py
     api/
@@ -63,18 +88,16 @@ Minimum structure:
       __init__.py
       service.py
       determinism.py
+      catalog_loader.py
       security.py   # optional (only if tool enforces auth)
-    db/             # only if tool persists data
+    cli/
       __init__.py
-      models.py
-      migrations/
-        env.py
-        versions/
+      main.py
   tests/
-    __init__.py
     test_contract_schemas.py
     test_determinism_json.py
     test_ordering_pagination.py
+    test_cli_smoke.py
     test_openapi_snapshot.py
     test_api_smoke.py
 
@@ -84,7 +107,7 @@ Notes:
 
 ---
 
-## 3) Host Integration Contract (TechVault)
+## 4) Host Integration Contract (TechVault)
 
 - TechVault imports router explicitly; no plugin discovery.
 - Host provides request context (`ctx`) and db session dependency overrides where applicable.
@@ -92,18 +115,39 @@ Notes:
 
 ---
 
-## 4) Security Contract (if applicable)
+## 5) Standalone Catalog Mode (Mandatory)
 
-### 4.1 Context fields
+CLI MUST support standalone invocation with catalog input:
+
+- `--catalog-file <path_to_catalog.json>`
+
+Example:
+- `python -m <tool_package>.cli search --query "python agents" --catalog-file catalog.json`
+
+### 5.1 Catalog JSON format
+- UTF-8 JSON array of catalog items.
+- Each item must include deterministic identity and retrieval fields (for example `item_id`, `title`, `authors`, `year`, `file_ref`, `tags`).
+- Service behavior MUST be independent of input item order.
+
+### 5.2 Loader and normalization requirements
+- `core/catalog_loader.py` loads and validates catalog JSON.
+- Catalog items are normalized to a deterministic order before search logic runs.
+- Minimum normalization: sort by `item_id` ascending.
+
+---
+
+## 6) Security Contract (if applicable)
+
+### 6.1 Context fields
 Define the minimal ctx contract (user_id, group_ids, security_level, etc.) if the tool enforces access control.
 
-### 4.2 Enforcement rules
+### 6.2 Enforcement rules
 - Centralized enforcement only: `core/security.py`
 - Fail-closed on missing/unknown values.
 
 ---
 
-## 5) Service Exception Boundary (Strict)
+## 7) Service Exception Boundary (Strict)
 
 **Only these exceptions may escape service functions:**
 - `ValueError` (invalid input, not found, determinism violations)
@@ -113,37 +157,43 @@ All unexpected exceptions MUST be wrapped deterministically as `ValueError("Unex
 
 ---
 
-## 6) Data Contracts
+## 8) Data Contracts
 
-### 6.1 Primary entities
+### 8.1 Primary entities
 Define entity models (even if no DB): e.g., `CatalogItem`, `SearchResult`, etc.
 
-### 6.2 Sorting and pagination (MUST be explicit)
+### 8.2 Sorting and pagination (MUST be explicit)
 Define:
 - Default sort keys
 - Tie-breaker key
 - Pagination model (`limit`, `offset` OR cursor—prefer limit/offset for simplicity)
 - Stability guarantees
 
+### 8.3 CLI output contract
+- Command output is canonical JSON to stdout only.
+- Output shape must match corresponding API response semantics.
+- Errors are deterministic and emitted to stderr only.
+- If `response_hash` is emitted, it MUST match canonical response payload bytes excluding the hash field.
+
 ---
 
-## 7) API Contract (FastAPI)
+## 9) API Contract (FastAPI)
 
-### 7.1 Router
+### 9.1 Router
 - Prefix: `/v1/tools/<tool_id>`
 - Tags: `["tools:<tool_id>"]`
 
-### 7.2 Endpoints
+### 9.2 Endpoints
 List endpoints with request/response schemas.
 
-### 7.3 Error mapping
+### 9.3 Error mapping
 - `PermissionError` → HTTP 403
 - `ValueError` containing “not found” → HTTP 404
 - other `ValueError` → HTTP 400
 
 ---
 
-## 8) Determinism Tests (Required)
+## 10) Determinism Tests (Required)
 
 - Byte-identical JSON for same request repeated N times.
 - Ordering/pagination stability for:
@@ -151,10 +201,13 @@ List endpoints with request/response schemas.
   - same title, different id
   - case-folding collisions
 - “No hidden nondeterminism” test: randomize input iteration order and assert output unchanged.
+- Catalog shuffle test: shuffled catalog input produces identical results.
+- CLI determinism test: repeated CLI invocation with same args yields identical stdout bytes.
+- Response hash test: recompute `sha256(canonical_json_without_hash)` and assert equality with emitted `response_hash`.
 
 ---
 
-## 9) OpenAPI Snapshot (Tool-local)
+## 11) OpenAPI Snapshot (Tool-local)
 
 - Repo root contains `openapi.snapshot.json`.
 - Test compares generated schema to snapshot.
@@ -162,10 +215,12 @@ List endpoints with request/response schemas.
 
 ---
 
-## 10) Done Definition (Acceptance Criteria)
+## 12) Done Definition (Acceptance Criteria)
 
 - All tests pass: `pytest -q`
 - OpenAPI snapshot stable (no drift)
 - Determinism tests pass (byte-identical JSON)
+- CLI smoke + standalone mode tests pass (`--catalog-file` path)
+- If hash is enabled, `response_hash` validation tests pass
 - Service exception boundary enforced
 - Pagination/order invariants verified
