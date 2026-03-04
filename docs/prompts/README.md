@@ -4,6 +4,8 @@ This index maps prompt files to execution phases in `TOOL_TEMPLATE_EXECUTION_PLA
 
 ## Phase Mapping
 
+- Preflight (run first) — SOT invariant check: `10_sot_invariant_check.md`
+
 - Phase 0 — Scaffold: `00_scaffold_repo.md`
 - Phase 1 — Contracts + determinism helpers: `01_contracts_and_determinism.md`
 - Phase 2 — Service layer + ordering rules: `02_catalog_loader.md`, `03_service_layer_ordering.md`
