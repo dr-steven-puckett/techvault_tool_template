@@ -1,0 +1,27 @@
+<repo_root>/
+  tool.toml
+  README.md
+  openapi.snapshot.json
+  docs/
+    TOOL_<NAME>_SOT.md
+    TOOL_<NAME>_EXECUTION_PLAN.md
+    TOOL_<NAME>_ROADMAP.md
+  <tool_package>/
+    __init__.py
+    api/
+      __init__.py
+      deps.py
+      router.py
+      schemas.py
+      openapi_snapshot.py
+    core/
+      __init__.py
+      service.py
+      determinism.py
+  tests/
+    __init__.py
+    test_contract_schemas.py
+    test_ordering_pagination.py
+    test_determinism_json.py
+    test_openapi_snapshot.py
+    test_api_smoke.py
