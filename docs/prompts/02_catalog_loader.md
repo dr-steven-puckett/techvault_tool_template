@@ -10,6 +10,13 @@ Implement deterministic standalone catalog loading in `core/catalog_loader.py`.
 ## Requirements
 - Load catalog JSON from `--catalog-file` path.
 - Validate UTF-8 and expected item schema.
+- Catalog loading MUST follow this sequence:
+- 1) load JSON file
+- 2) validate schema of each item
+- 3) normalize structure
+- 4) sort deterministically by `item_id`
+- Sorting must occur only after schema validation succeeds.
+- Malformed entries must raise `ValueError`.
 - Normalize ordering before service logic runs.
 - Minimum normalization is sort by `item_id` ascending.
 - Return deterministic `list[CatalogItem]` output.

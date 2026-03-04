@@ -10,6 +10,9 @@ Implement a standalone CLI adapter in `cli/main.py` that reuses service-layer lo
 
 ## Requirements
 - Implement commands: `search` and `health`.
+- The CLI MUST support invocation using `python -m <tool_package>.cli <command>`.
+- Implement module entry so `<tool_package>.cli` acts as the CLI entrypoint.
+- Do NOT require running `cli/main.py` directly.
 - Accept `--catalog-file` for standalone operation.
 - Load catalog via `core/catalog_loader.py`.
 - Call service-layer functions only; do not duplicate logic in CLI.
