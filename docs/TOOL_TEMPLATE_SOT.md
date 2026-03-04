@@ -27,10 +27,10 @@ This tool MUST be deterministic:
 - CLI output is JSON-only to stdout; errors are emitted to stderr only.
 
 ### 0.2 Deterministic hash check (recommended standard)
-- Tool responses SHOULD include `response_hash`.
-- `response_hash` MUST be computed as `sha256(canonical_json_without_hash)`.
+- `response_hash` is OPTIONAL and controlled by a tool-level setting `response_hash_enabled` (template default: `false`).
+- If `response_hash_enabled=true`, API + CLI responses MUST include `response_hash` computed as `sha256(canonical_json_without_hash)`.
 - Hash input excludes the `response_hash` field itself.
-- When present, `response_hash` MUST be identical across API and CLI for identical logical responses.
+- If `response_hash_enabled=false`, `response_hash` MUST NOT be emitted.
 
 ---
 
@@ -76,6 +76,7 @@ Minimum structure:
     TOOL_<NAME>_ROADMAP.md
     TOOL_TEMPLATE.md
     prompts/
+      README.md
   <tool_package>/
     __init__.py
     api/
@@ -123,6 +124,7 @@ CLI MUST support standalone invocation with catalog input:
 
 Example:
 - `python -m <tool_package>.cli search --query "python agents" --catalog-file catalog.json`
+- Canonical invocation form is `python -m <tool_package>.cli <command> ...`.
 
 ### 5.1 Catalog JSON format
 - UTF-8 JSON array of catalog items.
@@ -174,6 +176,7 @@ Define:
 - Output shape must match corresponding API response semantics.
 - Errors are deterministic and emitted to stderr only.
 - If `response_hash` is emitted, it MUST match canonical response payload bytes excluding the hash field.
+- Canonical CLI invocation form is `python -m <tool_package>.cli <command> ...`.
 
 ---
 
@@ -203,7 +206,7 @@ List endpoints with request/response schemas.
 - “No hidden nondeterminism” test: randomize input iteration order and assert output unchanged.
 - Catalog shuffle test: shuffled catalog input produces identical results.
 - CLI determinism test: repeated CLI invocation with same args yields identical stdout bytes.
-- Response hash test: recompute `sha256(canonical_json_without_hash)` and assert equality with emitted `response_hash`.
+- Response hash test (ONLY when `response_hash_enabled=true`): recompute `sha256(canonical_json_without_hash)` and assert equality with emitted `response_hash`.
 
 ---
 

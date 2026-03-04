@@ -5,6 +5,7 @@ Run each phase in order. Do not proceed until the checkpoint passes.
 ## Phase 0 — Scaffold
 - Create repo tree, package skeleton, tool.toml, README, openapi.snapshot.json placeholder, docs/.
 - Include `cli/` package and `core/catalog_loader.py`.
+- Create `docs/prompts/README.md`.
 
 Checkpoint 0:
 - `python -c "import <tool_package>"` succeeds
@@ -13,7 +14,7 @@ Checkpoint 0:
 ## Phase 1 — Contracts first (schemas + determinism helpers)
 - Define Pydantic request/response schemas
 - Add canonical JSON dump helper (core/determinism.py)
-- Add deterministic hash helper for `response_hash` (`sha256(canonical_json_without_hash)`)
+- If `response_hash_enabled=true` for this tool, add deterministic hash helper for `response_hash` (`sha256(canonical_json_without_hash)`)
 - Add contract tests for schema validation
 
 Checkpoint 1:
@@ -49,7 +50,7 @@ Checkpoint 4:
 - Add CLI smoke test (`tests/test_cli_smoke.py`) with `subprocess.run()` and `returncode == 0`
 - Assert repeated CLI stdout is byte-identical
 - Assert standalone mode works with `--catalog-file`
-- Add `response_hash` tests (if enabled): recompute from canonical payload without hash and assert equality
+- If `response_hash_enabled=true`, add `response_hash` tests: recompute from canonical payload without hash and assert equality
 - Add API smoke tests
 
 Checkpoint 5 (Final Gate):

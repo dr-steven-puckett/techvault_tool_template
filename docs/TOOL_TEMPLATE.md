@@ -35,6 +35,8 @@ CLI output must be deterministic canonical JSON on stdout only; errors go to std
 
 When enabled, responses should include `response_hash = sha256(canonical_json_without_hash)` for determinism verification, cache keys, and auditability.
 
+Template default: `response_hash_enabled = false` unless a tool SOT explicitly enables it.
+
 ## Determinism Requirement
 
 Tools must enforce:
