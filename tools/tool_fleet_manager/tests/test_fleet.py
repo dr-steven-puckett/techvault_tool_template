@@ -571,3 +571,174 @@ class TestStepsNormalization:
         )
 
         assert canonical_json(report_a) == canonical_json(report_b)
+
+
+# ---------------------------------------------------------------------------
+# 12 — Subprocess steps: validate, security-scan, underscore normalization
+# ---------------------------------------------------------------------------
+
+
+class TestSubprocessSteps:
+    """validate and security-scan dispatch + underscore-alias normalization."""
+
+    def _single_tool_setup(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> tuple[Path, Path]:
+        tools_base = tmp_path / "tools"
+        _make_tool_dir(tools_base, "my_tool")
+        catalog_path = _make_catalog(
+            tmp_path, [{"id": "my_tool", "path": "tools/my_tool"}]
+        )
+        manifest = _make_manifest(tmp_path)
+        monkeypatch.setattr(fleet, "_WORKSPACE_ROOT", tmp_path)
+        return catalog_path, manifest
+
+    def test_validate_step_dispatches_to_step_validate(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog_path, manifest = self._single_tool_setup(tmp_path, monkeypatch)
+        called: list[str] = []
+
+        def _mock_validate(tool_path: Path, manifest_path: Path, strict: bool):
+            called.append(tool_path.name)
+            return {"stdout": "ok", "stderr": ""}, 0
+
+        monkeypatch.setattr(fleet, "_step_validate", _mock_validate)
+
+        report, code = run_fleet(
+            catalog_path=catalog_path,
+            manifest_path=manifest,
+            strict=False,
+            steps=["validate"],
+        )
+        assert code == 0
+        assert called == ["my_tool"]
+        assert report["results"][0]["step"] == "validate"
+
+    def test_security_scan_step_dispatches_to_step_security_scan(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog_path, manifest = self._single_tool_setup(tmp_path, monkeypatch)
+        called: list[str] = []
+
+        def _mock_scan(tool_path: Path, manifest_path: Path, strict: bool):
+            called.append(tool_path.name)
+            return {"stdout": "PASS", "stderr": ""}, 0
+
+        monkeypatch.setattr(fleet, "_step_security_scan", _mock_scan)
+
+        report, code = run_fleet(
+            catalog_path=catalog_path,
+            manifest_path=manifest,
+            strict=False,
+            steps=["security-scan"],
+        )
+        assert code == 0
+        assert called == ["my_tool"]
+        assert report["results"][0]["step"] == "security-scan"
+
+    def test_underscore_alias_normalizes_to_hyphen(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """security_scan (underscore) must normalize to security-scan (hyphen)."""
+        catalog_path, manifest = self._single_tool_setup(tmp_path, monkeypatch)
+
+        def _mock_scan(tool_path, manifest_path, strict):
+            return {"stdout": "PASS", "stderr": ""}, 0
+
+        monkeypatch.setattr(fleet, "_step_security_scan", _mock_scan)
+
+        report, code = run_fleet(
+            catalog_path=catalog_path,
+            manifest_path=manifest,
+            strict=False,
+            steps=["security_scan"],  # underscore input
+        )
+        assert code == 0
+        # Report header must use normalized hyphen name.
+        assert "security-scan" in report["steps"]
+        assert "security_scan" not in report["steps"]
+        assert report["results"][0]["step"] == "security-scan"
+
+    def test_validate_step_report_has_stdout_stderr_keys(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog_path, manifest = self._single_tool_setup(tmp_path, monkeypatch)
+
+        monkeypatch.setattr(
+            fleet, "_step_validate",
+            lambda tp, mp, s: ({"stdout": "repo ok", "stderr": ""}, 0),
+        )
+
+        report, _ = run_fleet(
+            catalog_path=catalog_path,
+            manifest_path=manifest,
+            strict=False,
+            steps=["validate"],
+        )
+        result_report = report["results"][0]["report"]
+        assert "stdout" in result_report
+        assert "stderr" in result_report
+
+    def test_failed_validate_step_counts_as_warn(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog_path, manifest = self._single_tool_setup(tmp_path, monkeypatch)
+
+        monkeypatch.setattr(
+            fleet, "_step_validate",
+            lambda tp, mp, s: ({"stdout": "FAIL", "stderr": ""}, 1),
+        )
+
+        report, fleet_code = run_fleet(
+            catalog_path=catalog_path,
+            manifest_path=manifest,
+            strict=False,
+            steps=["validate"],
+        )
+        assert fleet_code == 1
+        assert report["summary"]["warn"] == 1
+        assert report["summary"]["ok"] == 0
+
+    def test_error_security_scan_counts_as_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog_path, manifest = self._single_tool_setup(tmp_path, monkeypatch)
+
+        monkeypatch.setattr(
+            fleet, "_step_security_scan",
+            lambda tp, mp, s: ({"stdout": "", "stderr": "crash"}, 2),
+        )
+
+        report, fleet_code = run_fleet(
+            catalog_path=catalog_path,
+            manifest_path=manifest,
+            strict=False,
+            steps=["security-scan"],
+        )
+        assert fleet_code == 2
+        assert report["summary"]["error"] == 1
+
+    def test_mixed_steps_underscore_and_hyphen(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """validate + security_scan + template-check all normalize correctly."""
+        catalog_path, manifest = self._single_tool_setup(tmp_path, monkeypatch)
+
+        monkeypatch.setattr(fleet, "_step_validate",
+                            lambda tp, mp, s: ({"stdout": "ok", "stderr": ""}, 0))
+        monkeypatch.setattr(fleet, "_step_security_scan",
+                            lambda tp, mp, s: ({"stdout": "PASS", "stderr": ""}, 0))
+        monkeypatch.setattr(fleet, "_step_template_check",
+                            lambda tp, mp, s: ({}, 0))
+
+        report, code = run_fleet(
+            catalog_path=catalog_path,
+            manifest_path=manifest,
+            strict=False,
+            steps=["validate", "security_scan", "template-check"],
+        )
+        assert code == 0
+        assert report["steps"] == sorted(["validate", "security-scan", "template-check"])
+        step_names = {r["step"] for r in report["results"]}
+        assert step_names == {"validate", "security-scan", "template-check"}

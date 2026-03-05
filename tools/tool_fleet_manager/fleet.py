@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import runpy
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Sequence
@@ -43,6 +44,14 @@ from tool_common.report import canonical_json  # type: ignore  # noqa: E402
 
 _DEFAULT_CATALOG: Path = _TOOLS_DIR / "tools.catalog.json"
 _DEFAULT_MANIFEST: Path = _TOOLS_DIR / "tool_template" / "TEMPLATE_MANIFEST.json"
+
+# Sibling CLI script paths (used by subprocess-based step dispatchers).
+_VALIDATOR_SCRIPT: Path = _TOOLS_DIR / "tool_template_validator" / "techvault-tool-validate"
+_SECURITY_SCRIPT: Path = _TOOLS_DIR / "tool_security_harness" / "techvault-tool-security-scan"
+
+# Limits for subprocess-based steps.
+_STEP_SUBPROCESS_TIMEOUT: int = 120
+_MAX_SUBPROCESS_OUTPUT: int = 20_000
 
 # ---------------------------------------------------------------------------
 # Catalog validation exception
@@ -144,6 +153,20 @@ def read_catalog(catalog_path: str | Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Step name normalization
+# ---------------------------------------------------------------------------
+
+
+def _normalize_step(name: str) -> str:
+    """Normalize step names: underscores → hyphens for CLI consistency.
+
+    Allows callers to pass ``security_scan`` or ``security-scan``
+    interchangeably.
+    """
+    return name.replace("_", "-")
+
+
+# ---------------------------------------------------------------------------
 # Step runners (module-level for monkeypatching in tests)
 # ---------------------------------------------------------------------------
 
@@ -176,6 +199,64 @@ def _step_template_version_check(
     return g["run_check"](tool_path, manifest_path)  # type: ignore[return-value]
 
 
+def _step_validate(
+    tool_path: Path,
+    manifest_path: Path,
+    strict: bool,
+) -> tuple[dict, int]:
+    """
+    Run the validate step via subprocess (techvault-tool-validate).
+    Monkeypatch target for tests.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, str(_VALIDATOR_SCRIPT), str(tool_path)],
+            capture_output=True,
+            text=True,
+            timeout=_STEP_SUBPROCESS_TIMEOUT,
+        )
+        return (
+            {
+                "stderr": result.stderr[:_MAX_SUBPROCESS_OUTPUT],
+                "stdout": result.stdout[:_MAX_SUBPROCESS_OUTPUT],
+            },
+            result.returncode,
+        )
+    except subprocess.TimeoutExpired:
+        return {"stderr": "step timed out", "stdout": ""}, 2
+    except Exception as exc:  # noqa: BLE001
+        return {"stderr": str(exc), "stdout": ""}, 2
+
+
+def _step_security_scan(
+    tool_path: Path,
+    manifest_path: Path,
+    strict: bool,
+) -> tuple[dict, int]:
+    """
+    Run the security-scan step via subprocess (techvault-tool-security-scan).
+    Monkeypatch target for tests.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, str(_SECURITY_SCRIPT), str(tool_path)],
+            capture_output=True,
+            text=True,
+            timeout=_STEP_SUBPROCESS_TIMEOUT,
+        )
+        return (
+            {
+                "stderr": result.stderr[:_MAX_SUBPROCESS_OUTPUT],
+                "stdout": result.stdout[:_MAX_SUBPROCESS_OUTPUT],
+            },
+            result.returncode,
+        )
+    except subprocess.TimeoutExpired:
+        return {"stderr": "step timed out", "stdout": ""}, 2
+    except Exception as exc:  # noqa: BLE001
+        return {"stderr": str(exc), "stdout": ""}, 2
+
+
 def _dispatch_step(
     step: str,
     tool_path: Path,
@@ -193,6 +274,10 @@ def _dispatch_step(
             report, code = _step_template_check(tool_path, manifest_path, strict)
         elif step == "template-version-check":
             report, code = _step_template_version_check(tool_path, manifest_path, strict)
+        elif step == "validate":
+            report, code = _step_validate(tool_path, manifest_path, strict)
+        elif step == "security-scan":
+            report, code = _step_security_scan(tool_path, manifest_path, strict)
         else:
             return (
                 None,
@@ -248,7 +333,8 @@ def run_fleet(
     )
 
     # Normalize steps once so both the report header and execution order match.
-    normalized_steps: list[str] = sorted(steps)
+    # _normalize_step converts underscores → hyphens (e.g. security_scan → security-scan).
+    normalized_steps: list[str] = sorted(_normalize_step(s) for s in steps)
 
     # Report header (common to all outcomes).
     base: dict = {
@@ -382,7 +468,7 @@ def run_fleet(
         "summary": {
             "error": error_count,
             "ok": ok,
-            "total_steps": len(steps),
+            "total_steps": len(normalized_steps),
             "total_tools": len(tools),
             "warn": warn,
         },
@@ -442,7 +528,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=(
             "Comma-separated list of steps to run per tool. "
             "Default: template-check. "
-            "Supported: template-check, template-version-check."
+            "Supported: template-check, template-version-check, validate, security-scan. "
+            "Underscores are accepted as aliases for hyphens "
+            "(e.g. security_scan == security-scan)."
         ),
     )
     args = parser.parse_args(argv)
