@@ -1,0 +1,209 @@
+.
+├── docs
+│   ├── STANDARD_REPO_SKELETON.md
+│   ├── TOOL_TEMPLATE.md
+│   ├── TOOL_TEMPLATE_EXECUTION_PLAN.md
+│   ├── TOOL_TEMPLATE_ROADMAP.md
+│   ├── TOOL_TEMPLATE_SOT.md
+│   ├── TOOL_TOML_SPEC.md
+│   ├── prompts
+│   │   ├── 00_scaffold_repo.md
+│   │   ├── 01_contracts_and_determinism.md
+│   │   ├── 02_catalog_loader.md
+│   │   ├── 03_service_layer_ordering.md
+│   │   ├── 04_api_interface.md
+│   │   ├── 05_openapi_snapshot.md
+│   │   ├── 06_determinism_and_hash_tests.md
+│   │   ├── 07_final_gate.md
+│   │   ├── 08_cli_interface.md
+│   │   ├── 09_release_readiness.md
+│   │   ├── 10_sot_invariant_check.md
+│   │   └── README.md
+│   └── to_do_lists
+│       ├── tool_template_chatgpt_info.md
+│       └── tool_template_to_do_list.md
+├── pyrightconfig.json
+├── tools
+│   ├── tool_common
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-312.pyc
+│   │   │   └── stamp.cpython-312.pyc
+│   │   ├── manifest.py
+│   │   ├── stamp.py
+│   │   └── tests
+│   │       ├── __init__.py
+│   │       ├── __pycache__
+│   │       │   ├── __init__.cpython-312.pyc
+│   │       │   ├── conftest.cpython-312-pytest-9.0.2.pyc
+│   │       │   └── test_stamp.cpython-312-pytest-9.0.2.pyc
+│   │       ├── conftest.py
+│   │       └── test_stamp.py
+│   ├── tool_registration_manager
+│   │   ├── README.md
+│   │   ├── __pycache__
+│   │   │   └── registrar.cpython-312.pyc
+│   │   ├── registrar.py
+│   │   ├── techvault-tool-register
+│   │   └── tests
+│   │       ├── __init__.py
+│   │       ├── __pycache__
+│   │       │   ├── __init__.cpython-312.pyc
+│   │       │   └── test_tool_registration_manager.cpython-312-pytest-9.0.2.pyc
+│   │       ├── fixtures
+│   │       │   ├── another_tool
+│   │       │   │   └── tool.toml
+│   │       │   ├── bad_entrypoint_tool
+│   │       │   │   └── tool.toml
+│   │       │   ├── sample_tool
+│   │       │   │   ├── sample_tool
+│   │       │   │   │   └── __init__.py
+│   │       │   │   └── tool.toml
+│   │       │   └── techvault_repo
+│   │       │       └── backend
+│   │       │           └── techvault
+│   │       │               └── app
+│   │       │                   └── api
+│   │       │                       └── __init__.py
+│   │       └── test_tool_registration_manager.py
+│   ├── tool_security_harness
+│   │   ├── README.md
+│   │   ├── scanner.py
+│   │   ├── techvault-tool-security-scan
+│   │   └── tests
+│   │       ├── __init__.py
+│   │       ├── __pycache__
+│   │       │   ├── __init__.cpython-312.pyc
+│   │       │   └── test_security_harness.cpython-312-pytest-9.0.2.pyc
+│   │       ├── fixtures
+│   │       │   ├── bad_tool
+│   │       │   │   ├── bad_tool
+│   │       │   │   │   ├── __init__.py
+│   │       │   │   │   ├── __pycache__
+│   │       │   │   │   │   └── __init__.cpython-312.pyc
+│   │       │   │   │   ├── api
+│   │       │   │   │   │   ├── __init__.py
+│   │       │   │   │   │   ├── __pycache__
+│   │       │   │   │   │   │   └── router.cpython-312.pyc
+│   │       │   │   │   │   └── router.py
+│   │       │   │   │   ├── cli
+│   │       │   │   │   │   ├── __init__.py
+│   │       │   │   │   │   ├── __pycache__
+│   │       │   │   │   │   │   ├── __init__.cpython-312.pyc
+│   │       │   │   │   │   │   └── main.cpython-312.pyc
+│   │       │   │   │   │   └── main.py
+│   │       │   │   │   └── core
+│   │       │   │   │       ├── __init__.py
+│   │       │   │   │       ├── __pycache__
+│   │       │   │   │       │   └── catalog_loader.cpython-312.pyc
+│   │       │   │   │       ├── catalog_loader.py
+│   │       │   │   │       └── evil.py
+│   │       │   │   └── tool.toml
+│   │       │   └── good_tool
+│   │       │       ├── good_tool
+│   │       │       │   ├── __init__.py
+│   │       │       │   ├── __pycache__
+│   │       │       │   │   └── __init__.cpython-312.pyc
+│   │       │       │   ├── api
+│   │       │       │   │   ├── __init__.py
+│   │       │       │   │   ├── __pycache__
+│   │       │       │   │   │   └── router.cpython-312.pyc
+│   │       │       │   │   └── router.py
+│   │       │       │   ├── cli
+│   │       │       │   │   ├── __init__.py
+│   │       │       │   │   ├── __pycache__
+│   │       │       │   │   │   ├── __init__.cpython-312.pyc
+│   │       │       │   │   │   └── main.cpython-312.pyc
+│   │       │       │   │   └── main.py
+│   │       │       │   └── core
+│   │       │       │       ├── __init__.py
+│   │       │       │       └── catalog_loader.py
+│   │       │       └── tool.toml
+│   │       └── test_security_harness.py
+│   ├── tool_sync_manager
+│   │   ├── README.md
+│   │   ├── __pycache__
+│   │   │   └── sync.cpython-312.pyc
+│   │   ├── sync.py
+│   │   ├── techvault-tool-sync
+│   │   └── tests
+│   │       ├── __init__.py
+│   │       ├── __pycache__
+│   │       │   ├── __init__.cpython-312.pyc
+│   │       │   └── test_tool_sync_manager.cpython-312-pytest-9.0.2.pyc
+│   │       ├── fixtures
+│   │       │   ├── another_good_tool
+│   │       │   │   └── tool.toml
+│   │       │   ├── bad_tool
+│   │       │   │   └── tool.toml
+│   │       │   ├── good_tool
+│   │       │   │   └── tool.toml
+│   │       │   └── techvault_root
+│   │       │       └── backend
+│   │       │           └── techvault
+│   │       │               └── app
+│   │       │                   └── api
+│   │       │                       └── __init__.py
+│   │       └── test_tool_sync_manager.py
+│   ├── tool_template
+│   │   ├── STANDARD_REPO_SKELETON.md
+│   │   ├── TEMPLATE_MANIFEST.json
+│   │   ├── TOOL_TEMPLATE_EXECUTION_PLAN.md
+│   │   ├── TOOL_TEMPLATE_ROADMAP.md
+│   │   ├── TOOL_TEMPLATE_SOT.md
+│   │   └── prompts
+│   │       ├── 00_scaffold_repo.md
+│   │       ├── 01_contracts_and_determinism.md
+│   │       ├── 02_catalog_loader.md
+│   │       ├── 03_service_layer_ordering.md
+│   │       ├── 04_api_interface.md
+│   │       ├── 05_openapi_snapshot.md
+│   │       ├── 06_determinism_and_hash_tests.md
+│   │       ├── 07_final_gate.md
+│   │       ├── 08_cli_interface.md
+│   │       ├── 09_release_readiness.md
+│   │       ├── 10_sot_invariant_check.md
+│   │       └── README.md
+│   ├── tool_template_check
+│   │   ├── README.md
+│   │   ├── TEMPLATE_MANIFEST.json
+│   │   ├── __pycache__
+│   │   │   └── checker.cpython-312.pyc
+│   │   ├── checker.py
+│   │   ├── openapi.snapshot.json
+│   │   ├── techvault-tool-template-check
+│   │   ├── tests
+│   │   │   ├── __pycache__
+│   │   │   │   ├── __init__.cpython-312.pyc
+│   │   │   │   ├── conftest.cpython-312-pytest-9.0.2.pyc
+│   │   │   │   ├── test_cli.cpython-312-pytest-9.0.2.pyc
+│   │   │   │   └── test_tool_template_check.cpython-312-pytest-9.0.2.pyc
+│   │   │   ├── conftest.py
+│   │   │   └── test_tool_template_check.py
+│   │   └── tool.toml
+│   ├── tool_template_generator
+│   │   ├── __pycache__
+│   │   │   └── generator.cpython-312.pyc
+│   │   ├── generator.py
+│   │   └── techvault-tool-create
+│   ├── tool_template_validator
+│   │   ├── techvault-tool-validate
+│   │   └── validator.py
+│   └── tool_template_version
+│       ├── README.md
+│       ├── TEMPLATE_MANIFEST.json
+│       ├── __pycache__
+│       │   └── versioner.cpython-312.pyc
+│       ├── openapi.snapshot.json
+│       ├── techvault-tool-template-version
+│       ├── tests
+│       │   ├── __pycache__
+│       │   │   ├── conftest.cpython-312-pytest-9.0.2.pyc
+│       │   │   └── test_tool_template_version.cpython-312-pytest-9.0.2.pyc
+│       │   ├── conftest.py
+│       │   └── test_tool_template_version.py
+│       ├── tool.toml
+│       └── versioner.py
+└── tree.txt
+
+70 directories, 137 files

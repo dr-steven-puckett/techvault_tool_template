@@ -26,6 +26,7 @@ import tomllib
 
 import versioner
 from versioner import run_check, run_write
+from tool_common.report import canonical_json
 from tool_common.stamp import compute_manifest_sha256
 
 # ---------------------------------------------------------------------------
@@ -263,4 +264,4 @@ class TestReportContract:
             json.dumps(report, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
             + "\n"
         )
-        assert versioner._canonical_json(report) == canonical
+        assert canonical_json(report) == canonical

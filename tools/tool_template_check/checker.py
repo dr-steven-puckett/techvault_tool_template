@@ -16,7 +16,6 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -31,6 +30,7 @@ for _p in (str(_TOOLS_DIR), str(_TOOL_DIR)):
         sys.path.insert(0, _p)
 
 from tool_common.stamp import StampValidationError, compute_manifest_sha256, read_tool_toml, validate_stamp  # type: ignore  # noqa: E402
+from tool_common.report import canonical_json  # type: ignore  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -71,14 +71,6 @@ def _sort_findings(findings: list[dict]) -> list[dict]:
             f.get("code", ""),
             f.get("path", ""),
         ),
-    )
-
-
-def _canonical_json(obj: object) -> str:
-    """Return canonical JSON string (sort_keys, compact, single trailing newline)."""
-    return (
-        json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        + "\n"
     )
 
 
@@ -239,7 +231,7 @@ def main() -> int:
         }
         code = 2
 
-    print(_canonical_json(report), end="")
+    print(canonical_json(report), end="")
     return code
 
 

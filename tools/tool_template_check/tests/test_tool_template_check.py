@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from tool_common.report import canonical_json
 from pathlib import Path
 
 import pytest
@@ -179,7 +180,7 @@ class TestRunCheck:
             json.dumps(report, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
             + "\n"
         )
-        assert checker._canonical_json(report) == canonical
+        assert canonical_json(report) == canonical
 
     def test_findings_sorted_error_before_warn(self, tmp_path: Path) -> None:  # 11
         tool_dir = _make_tool_dir(tmp_path)
