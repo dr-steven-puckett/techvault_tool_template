@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter  # type: ignore[import-untyped]
 
 api_router = APIRouter()
 

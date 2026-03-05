@@ -7,7 +7,7 @@ import pickle  # forbidden: pickle import
 import socket  # forbidden: socket import
 import subprocess
 import os
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 
 def dangerous_deserialize(data: bytes):

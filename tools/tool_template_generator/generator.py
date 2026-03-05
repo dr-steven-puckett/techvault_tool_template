@@ -14,7 +14,7 @@ _TOOLS_DIR = Path(__file__).resolve().parent.parent
 if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
-from tool_common.stamp import compute_manifest_sha256, write_stamp  # noqa: E402
+from tool_common.stamp import compute_manifest_sha256, write_stamp  # type: ignore[import-untyped]  # noqa: E402
 
 
 REQUIRED_TEMPLATE_FILES = [

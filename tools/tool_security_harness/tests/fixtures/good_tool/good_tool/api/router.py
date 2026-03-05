@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 try:
-    from fastapi import APIRouter
+    from fastapi import APIRouter  # type: ignore[import-untyped]
 
     router = APIRouter(
         prefix="/v1/tools/good_tool",

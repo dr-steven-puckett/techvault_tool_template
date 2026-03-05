@@ -1,0 +1,7 @@
+{
+  "extraPaths": ["tools"],
+  "exclude": [
+    "**/tests/fixtures/**"
+  ],
+  "reportMissingModuleSource": "none"
+}

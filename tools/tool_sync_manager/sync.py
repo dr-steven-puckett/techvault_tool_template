@@ -84,8 +84,10 @@ def _run_subprocess(
         )
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired as exc:
-        out = (exc.stdout or b"").decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        err = (exc.stderr or b"").decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        out_raw = exc.stdout or b""
+        err_raw = exc.stderr or b""
+        out: str = out_raw.decode("utf-8", errors="replace") if isinstance(out_raw, bytes) else str(out_raw)
+        err: str = err_raw.decode("utf-8", errors="replace") if isinstance(err_raw, bytes) else str(err_raw)
         return -1, out, err + f"\n[TIMEOUT after {timeout}s]"
     except Exception as exc:
         return -1, "", f"[subprocess error] {exc}"
