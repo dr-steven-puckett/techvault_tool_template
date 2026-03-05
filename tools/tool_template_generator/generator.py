@@ -2,14 +2,24 @@
 from __future__ import annotations
 
 import argparse
+import json
 import keyword
 import re
 import shutil
+import sys
 from pathlib import Path
+
+# Allow importing tool_common (sibling package under tools/)
+_TOOLS_DIR = Path(__file__).resolve().parent.parent
+if str(_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_DIR))
+
+from tool_common.stamp import compute_manifest_sha256, write_stamp  # noqa: E402
 
 
 REQUIRED_TEMPLATE_FILES = [
     "STANDARD_REPO_SKELETON.md",
+    "TEMPLATE_MANIFEST.json",
     "TOOL_TEMPLATE_SOT.md",
     "TOOL_TEMPLATE_EXECUTION_PLAN.md",
     "TOOL_TEMPLATE_ROADMAP.md",
@@ -204,6 +214,14 @@ def create_scaffold(base_tools_dir: Path, template_root: Path, tool_id: str) -> 
     target_root.mkdir(parents=True, exist_ok=False)
 
     write_file(target_root / "tool.toml", render_tool_toml(tool_id))
+
+    # Stamp the new tool.toml with the current template version and manifest hash
+    manifest_path = template_root / "TEMPLATE_MANIFEST.json"
+    manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    template_version = manifest_data.get("template_version", "unknown")
+    manifest_hash = compute_manifest_sha256(manifest_path)
+    write_stamp(target_root / "tool.toml", template_version, manifest_hash, "create")
+
     write_file(target_root / "README.md", render_readme(tool_id))
     write_file(target_root / "openapi.snapshot.json", "{}\n")
 
