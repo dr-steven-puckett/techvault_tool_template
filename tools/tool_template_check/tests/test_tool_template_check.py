@@ -18,14 +18,14 @@ from __future__ import annotations
 
 import json
 import shutil
-from tool_common.report import canonical_json
 from pathlib import Path
 
 import pytest
 
-import checker
-from checker import run_check
-from tool_common.stamp import compute_manifest_sha256, write_stamp
+import checker  # type: ignore
+from checker import run_check  # type: ignore
+from tool_common.report import canonical_json  # type: ignore
+from tool_common.stamp import compute_manifest_sha256, write_stamp  # type: ignore
 
 # ---------------------------------------------------------------------------
 # Shared fixtures

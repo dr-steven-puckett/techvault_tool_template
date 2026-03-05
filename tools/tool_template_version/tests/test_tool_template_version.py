@@ -24,10 +24,10 @@ from pathlib import Path
 import pytest
 import tomllib
 
-import versioner
-from versioner import run_check, run_write
-from tool_common.report import canonical_json
-from tool_common.stamp import compute_manifest_sha256
+import versioner  # type: ignore
+from versioner import run_check, run_write  # type: ignore
+from tool_common.report import canonical_json  # type: ignore
+from tool_common.stamp import compute_manifest_sha256  # type: ignore
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
