@@ -1,0 +1,12 @@
+tool_id = "good_tool"
+name = "good_tool"
+version = "0.1.0"
+entrypoint = "good_tool.api.router:router"
+enabled_by_default = false
+
+[api]
+mount_prefix = ""
+tags = ["tools:good_tool"]
+
+[capabilities]
+actions = ["search"]

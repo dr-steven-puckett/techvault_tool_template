@@ -1,0 +1,6 @@
+tool_id = "sample_tool"
+entrypoint = "sample_tool.api.router:router"
+version = "1.0.0"
+enabled_by_default = false
+actions = ["search", "health"]
+tags = ["tools:sample_tool"]

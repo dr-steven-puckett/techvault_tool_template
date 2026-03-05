@@ -1,0 +1,6 @@
+tool_id = "another_tool"
+entrypoint = "another_tool.api.router:router"
+version = "2.0.0"
+enabled_by_default = true
+actions = ["list", "search"]
+tags = ["tools:another_tool"]

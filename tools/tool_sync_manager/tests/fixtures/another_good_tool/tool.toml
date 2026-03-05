@@ -1,0 +1,6 @@
+tool_id = "another_good_tool"
+entrypoint = "another_good_tool.api.router:router"
+version = "1.0.0"
+enabled_by_default = true
+actions = ["list"]
+tags = ["tools:another_good_tool"]

@@ -14,6 +14,7 @@ For this template repository, the canonical references are:
 - `TOOL_TEMPLATE_EXECUTION_PLAN.md`
 - `TOOL_TEMPLATE_ROADMAP.md`
 - `STANDARD_REPO_SKELETON.md`
+- `tools/tool_template/TEMPLATE_MANIFEST.json` — **canonical machine-readable inventory** of all required files, directories, prompt entries, and policy defaults. This is the authoritative source used by foundation tooling (validator, sync orchestrator) to check template compliance.
 
 ## Architecture Contract (Mandatory)
 

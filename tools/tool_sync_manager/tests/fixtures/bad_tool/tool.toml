@@ -1,0 +1,6 @@
+tool_id = "bad_tool"
+entrypoint = "bad_tool.api.router:router"
+version = "0.1.0"
+enabled_by_default = false
+actions = ["search"]
+tags = ["tools:bad_tool"]

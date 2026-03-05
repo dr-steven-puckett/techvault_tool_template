@@ -1,0 +1,6 @@
+tool_id = "good_tool"
+entrypoint = "good_tool.api.router:router"
+version = "1.0.0"
+enabled_by_default = true
+actions = ["search", "health"]
+tags = ["tools:good_tool"]

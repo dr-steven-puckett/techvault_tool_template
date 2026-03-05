@@ -1,0 +1,12 @@
+tool_id = "bad_tool"
+name = "bad_tool"
+version = "0.1.0"
+entrypoint = "bad_tool.api.router:router"
+enabled_by_default = false
+
+[api]
+mount_prefix = ""
+tags = ["tools:bad_tool"]
+
+[capabilities]
+actions = ["search"]
