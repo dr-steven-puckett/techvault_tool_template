@@ -247,11 +247,14 @@ def run_fleet(
         Path(manifest_path) if manifest_path is not None else _DEFAULT_MANIFEST
     )
 
+    # Normalize steps once so both the report header and execution order match.
+    normalized_steps: list[str] = sorted(steps)
+
     # Report header (common to all outcomes).
     base: dict = {
         "catalog_path": str(catalog_path),
         "manifest_path": str(resolved_manifest),
-        "steps": list(steps),
+        "steps": normalized_steps,
         "strict": strict,
     }
 
@@ -271,7 +274,7 @@ def run_fleet(
                 "summary": {
                     "error": 0,
                     "ok": 0,
-                    "total_steps": len(steps),
+                    "total_steps": len(normalized_steps),
                     "total_tools": 0,
                     "warn": 0,
                 },
@@ -291,7 +294,7 @@ def run_fleet(
                 "summary": {
                     "error": 0,
                     "ok": 0,
-                    "total_steps": len(steps),
+                    "total_steps": len(normalized_steps),
                     "total_tools": 0,
                     "warn": 0,
                 },
@@ -300,8 +303,7 @@ def run_fleet(
         )
 
     tools: list[dict] = catalog["tools"]  # sorted by id (validated by read_catalog)
-    # Steps are sorted for deterministic (tool_id, step) result ordering.
-    sorted_steps: list[str] = sorted(steps)
+    sorted_steps = normalized_steps
 
     results: list[dict] = []
 
