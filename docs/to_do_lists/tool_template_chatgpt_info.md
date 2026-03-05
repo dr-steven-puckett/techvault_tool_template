@@ -30,6 +30,7 @@ tv_tool_template/
 │   ├── TOOL_TEMPLATE_EXECUTION_PLAN.md   # Phased build sequence (Phase 0–6)
 │   ├── TOOL_TEMPLATE_ROADMAP.md          # Completed + future work
 │   ├── STANDARD_REPO_SKELETON.md         # Required directory/file tree
+│   ├── TOOL_TOML_SPEC.md                 # [template] stamp schema, finding codes, CLI contracts
 │   └── prompts/                          # Copilot prompt pack (11 files + README)
 │       ├── README.md                     # Phase-to-prompt mapping index
 │       ├── 00_scaffold_repo.md
@@ -44,6 +45,29 @@ tv_tool_template/
 │       ├── 09_release_readiness.md
 │       └── 10_sot_invariant_check.md     # Preflight — run before any phase
 ├── tools/
+│   ├── tools.catalog.json                # Canonical tool inventory (schema v1, sorted by id)
+│   ├── tool_common/                      # Shared foundation library (no CLI)
+│   │   ├── manifest.py                   # TEMPLATE_MANIFEST.json loader
+│   │   ├── report.py                     # canonical_json() — single serialization source
+│   │   ├── stamp.py                      # [template] stamp read/write/validate
+│   │   └── tests/                        # 66 tests (59 × stamp, 7 × report)
+│   ├── tool_fleet_manager/
+│   │   ├── fleet.py
+│   │   ├── techvault-tool-fleet          # Launcher
+│   │   ├── tool.toml
+│   │   └── tests/                        # 16 tests
+│   ├── tool_registration_manager/
+│   │   ├── registrar.py
+│   │   ├── techvault-tool-register       # Launcher
+│   │   └── tests/
+│   ├── tool_security_harness/
+│   │   ├── scanner.py
+│   │   ├── techvault-tool-security-scan  # Launcher
+│   │   └── tests/
+│   ├── tool_sync_manager/
+│   │   ├── sync.py
+│   │   ├── techvault-tool-sync           # Launcher (orchestrator)
+│   │   └── tests/
 │   ├── tool_template/                    # Mirror of docs/ (canonical template copy)
 │   │   ├── TEMPLATE_MANIFEST.json        # Machine-readable inventory of requirements
 │   │   ├── TOOL_TEMPLATE_SOT.md
@@ -51,24 +75,22 @@ tv_tool_template/
 │   │   ├── TOOL_TEMPLATE_ROADMAP.md
 │   │   ├── STANDARD_REPO_SKELETON.md
 │   │   └── prompts/                      # Mirror of docs/prompts/
+│   ├── tool_template_check/
+│   │   ├── checker.py
+│   │   ├── techvault-tool-template-check # Launcher
+│   │   ├── tool.toml
+│   │   └── tests/                        # 12 tests
 │   ├── tool_template_generator/
 │   │   ├── generator.py
 │   │   └── techvault-tool-create         # Launcher (chmod +x, runpy)
 │   ├── tool_template_validator/
 │   │   ├── validator.py
 │   │   └── techvault-tool-validate       # Launcher
-│   ├── tool_security_harness/
-│   │   ├── scanner.py
-│   │   ├── techvault-tool-security-scan  # Launcher
-│   │   └── tests/
-│   ├── tool_registration_manager/
-│   │   ├── registrar.py
-│   │   ├── techvault-tool-register       # Launcher
-│   │   └── tests/
-│   └── tool_sync_manager/
-│       ├── sync.py
-│       ├── techvault-tool-sync           # Launcher (orchestrator)
-│       └── tests/
+│   └── tool_template_version/
+│       ├── versioner.py
+│       ├── techvault-tool-template-version # Launcher
+│       ├── tool.toml
+│       └── tests/                        # 18 tests
 ```
 
 ---
@@ -256,10 +278,12 @@ python tools/tool_registration_manager/techvault-tool-register <repo_path> \
 
 ## 9. Foundation Tools Inventory
 
-All five foundation tools live in `tools/` and are complete. Each follows the same pattern:
+Eight foundation CLI tools and one shared library live in `tools/` and are complete. CLI tools follow the same pattern:
 - Single `.py` implementation file
 - `runpy`-based launcher (`techvault-<name>`, chmod +x)
 - `tests/` directory with monkeypatched subprocess isolation
+
+All CLI tools import `tool_common.report.canonical_json` for output serialization.
 
 ### 9.1 `techvault-tool-create` — Template Generator
 
@@ -387,6 +411,72 @@ python tools/tool_sync_manager/techvault-tool-sync --all <tools_dir> \
     --techvault-root <root> --apply --json-report /tmp/report.json
 ```
 
+### `tool_common` — Shared Foundation Library
+
+**Location:** `tools/tool_common/`
+**Tests:** 66 (59 × stamp, 7 × report)
+
+Shared helpers imported by all foundation CLI tools. No launcher — not a CLI tool itself.
+
+| Module | Purpose |
+|--------|---------|
+| `stamp.py` | Read, write, and validate the `[template]` stamp in `tool.toml`; emits finding codes: `STAMP_MISSING`, `HASH_MISMATCH`, `VERSION_MISMATCH`, `TOML_MISSING`, etc. |
+| `report.py` | `canonical_json(obj) -> str` — single authoritative serialization (`sort_keys=True`, `separators=(",",":")`, `ensure_ascii=False`, `+ "\n"`) |
+| `manifest.py` | Load and canonically serialize `TEMPLATE_MANIFEST.json` |
+
+The `[template]` stamp added to every tool's `tool.toml` at scaffold time:
+
+```toml
+[template]
+stamp_source           = "create"   # "create" | "manual"
+template_manifest_hash = "<sha256 of TEMPLATE_MANIFEST.json>"
+template_version       = "2.0.0"
+```
+
+Full contract: `docs/TOOL_TOML_SPEC.md`.
+
+### 9.6 `techvault-tool-template-check` — Stamp Validator
+
+**Location:** `tools/tool_template_check/`
+**Tests:** 12
+**Exit codes:** 0 = no findings, 1 = WARN only, 2 = ERROR present
+
+Validates the `[template]` stamp in `tool.toml` against `TEMPLATE_MANIFEST.json`. Reports all finding codes (level, message, path) as canonical JSON. `--strict` escalates any WARN to exit 2.
+
+```bash
+techvault-tool-template-check <tool_path> [--manifest PATH] [--strict]
+```
+
+Default manifest: workspace canonical `tools/tool_template/TEMPLATE_MANIFEST.json`.
+
+### 9.7 `techvault-tool-template-version` — Stamp Writer
+
+**Location:** `tools/tool_template_version/`
+**Tests:** 18
+**Exit codes:** 0 = no findings, 1 = WARN only, 2 = ERROR present
+
+Reads (`--check`) or repairs (`--write`) the `[template]` stamp in `tool.toml`. `--write` sets `stamp_source="manual"` and re-validates post-write. Both modes emit canonical JSON reports.
+
+```bash
+techvault-tool-template-version <tool_path> (--check | --write) [--manifest PATH]
+```
+
+### 9.8 `techvault-tool-fleet` — Fleet Runner
+
+**Location:** `tools/tool_fleet_manager/`
+**Tests:** 16
+**Exit codes:** 0 = all OK, 1 = at least one WARN, 2 = any ERROR
+
+Runs stamp-checking steps across every tool listed in `tools/tools.catalog.json`. Does **not** scan directories — the catalog is the single authority.
+
+```bash
+techvault-tool-fleet [--catalog PATH] [--manifest PATH] [--strict] [--steps STEPS]
+```
+
+Default `--steps`: `template-check`. Supported: `template-check`, `template-version-check`.
+
+`tools/tools.catalog.json` schema (v1): sorted array of `{ "id": "<tool_id>", "path": "tools/<dir>" }`, exact keys only. Results sorted by `(tool_id, step)`; summary includes `ok`, `warn`, `error` counts.
+
 ---
 
 ## 10. Prompt Pack (Copilot Construction Workflow)
@@ -460,13 +550,19 @@ Used as the proof-of-concept and example for the template standard.
 ### Completed ✓
 
 | Item | Notes |
-|---|---|
+|------|-------|
 | `TEMPLATE_MANIFEST.json` | `tools/tool_template/TEMPLATE_MANIFEST.json` — canonical machine-readable inventory |
-| `techvault-tool-create` | Scaffolding generator |
+| `docs/TOOL_TOML_SPEC.md` | `[template]` stamp schema, finding codes, CLI contracts for stamp tools |
+| `tool_common` library | `stamp.py`, `report.py`, `manifest.py`; 66 tests; `canonical_json()` is the ecosystem-wide serialization source |
+| `tools/tools.catalog.json` | Canonical tool inventory (schema v1); fleet runner authority |
+| `techvault-tool-create` | Scaffolding generator; copies `TEMPLATE_MANIFEST.json` into scaffolded repo |
 | `techvault-tool-validate` | Compliance validator |
 | `techvault-tool-security-scan` | Offline AST security scanner, 28 tests |
 | `techvault-tool-register` | Idempotent router-block registrar, 37 tests |
 | `techvault-tool-sync` | Lifecycle orchestrator (all four gates), 47 tests |
+| `techvault-tool-template-check` | Stamp validator; 12 tests; exit 0/1/2 |
+| `techvault-tool-template-version` | Stamp writer; 18 tests; `--check` / `--write` modes |
+| `techvault-tool-fleet` | Fleet runner across catalog; 16 tests; aggregated canonical JSON report |
 | `library_catalog_search` | Reference tool (in separate repo) |
 | Docs/SOT mirrored to `tools/tool_template/` | Template mirror kept in sync |
 | `.gitignore` | Standard Python excludes |
@@ -494,24 +590,21 @@ These are the next automation tools proposed for this workspace, in recommended 
 
 | # | Tool Name | Purpose |
 |---|---|---|
-| 1 | `techvault-tool-template-check` | Detect drift from template standard in an existing tool repo (structure, prompt pack, tool.toml schema, SOT docs) |
-| 2 | `techvault-tool-template-patch` | Auto-update existing tool repos when template changes — add new prompt files, update SOT sections, add missing dirs |
-| 3 | `techvault-tool-prompts-check` | Verify every tool repo has the complete prompt pack (all 11 files), flag missing or modified prompts |
-| 4 | `techvault-tool-prompts-update` | Push template prompt updates into existing tool repos (`--all tools/`) |
-| 5 | `techvault-tool-schema-gen` | Auto-generate `schemas.py`, `router.py`, `service.py` stubs from `tool.toml` — drastically speeds up Phase 0–1 |
-| 6 | `techvault-tool-determinism-check` | Standalone determinism verification: stable JSON ordering, deterministic pagination, repeat-run identity |
-| 7 | `techvault-tool-docs-build` | Auto-generate `TechVault/docs/TOOLS.md` catalog table (tool, actions, endpoint) from all registered tools |
-| 8 | `techvault-tool-integration-test` | Spin up temporary FastAPI env, load router, verify endpoints respond, OpenAPI valid |
-| 9 | `techvault-tool-benchmark` | Measure avg latency, memory usage, catalog-size scaling — critical for search/text tools |
-| 10 | `techvault-tool-template-version` | Track which template version each tool uses; upgrade command `techvault-tool-template-upgrade` |
+| 1 | `techvault-tool-template-patch` | Auto-update existing tool repos when template changes — add new prompt files, update SOT sections, add missing dirs |
+| 2 | `techvault-tool-prompts-check` | Verify every tool repo has the complete prompt pack (all 11 files), flag missing or modified prompts |
+| 3 | `techvault-tool-prompts-update` | Push template prompt updates into existing tool repos (`--all tools/`) |
+| 4 | `techvault-tool-schema-gen` | Auto-generate `schemas.py`, `router.py`, `service.py` stubs from `tool.toml` — drastically speeds up Phase 0–1 |
+| 5 | `techvault-tool-determinism-check` | Standalone determinism verification: stable JSON ordering, deterministic pagination, repeat-run identity |
+| 6 | `techvault-tool-docs-build` | Auto-generate `TechVault/docs/TOOLS.md` catalog table (tool, actions, endpoint) from all registered tools |
+| 7 | `techvault-tool-integration-test` | Spin up temporary FastAPI env, load router, verify endpoints respond, OpenAPI valid |
+| 8 | `techvault-tool-benchmark` | Measure avg latency, memory usage, catalog-size scaling — critical for search/text tools |
 
 ### Notes on Priority Reasoning
-- **Items 1–2** are the most urgent: as tools proliferate, drift goes silent without a detector+patcher.
-- **Items 3–4** are closely related to 1–2 and could be merged into a single `template-check` + `template-patch` system.
-- **Item 5** (`schema-gen`) has the highest ROI for new tool construction — eliminates manual boilerplate for Phases 0–1.
-- **Items 6–7** are quality/observability tools with moderate priority.
-- **Items 8–9** are integration/performance tools — lower priority until more tools exist.
-- **Item 10** (version manager) becomes critical when template versioning diverges across tools.
+- **Item 1** (`template-patch`) is now the top priority: `techvault-tool-template-check` and `techvault-tool-template-version` detect and report stamp drift; `template-patch` is the complementary write side.
+- **Items 2–3** are closely related to `template-patch` and could be merged into a single `template-patch` system.
+- **Item 4** (`schema-gen`) has the highest ROI for new tool construction — eliminates manual boilerplate for Phases 0–1.
+- **Items 5–6** are quality/observability tools with moderate priority.
+- **Items 7–8** are integration/performance tools — lower priority until more tools exist.
 
 ---
 
@@ -586,7 +679,7 @@ The following are open design considerations relevant for ChatGPT architecture d
 
 1. **Template versioning strategy** — `TEMPLATE_MANIFEST.json` has `template_version: "2.0.0"`. How should `tool.toml` record which template version a tool was built against? What is the migration path when the template bumps?
 
-2. **`techvault-tool-template-check` vs. `techvault-tool-validate`** — The existing validator checks compliance only at Phase 6 gate time. A drift detector would run continuously against already-shipped tools. Should these be merged (with a `--drift` flag) or remain separate tools?
+2. **`techvault-tool-template-check` vs. `techvault-tool-validate`** — Both are now implemented as separate tools. The validator checks compliance at Phase 6 gate time (structure, prompts, manifest). The stamp checker (`tool-template-check`) runs continuously against already-shipped tools to detect `[template]` stamp drift. They remain separate; merging them is not recommended.
 
 3. **`techvault-tool-schema-gen` from `tool.toml`** — What fields should `tool.toml` contain to enable stub generation of `schemas.py` / `router.py` / `service.py`? Currently `tool.toml` is minimal. Needs a schema definition section.
 
