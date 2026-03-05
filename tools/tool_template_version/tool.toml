@@ -1,0 +1,17 @@
+tool_id            = "tool_template_version"
+name               = "tool_template_version"
+version            = "0.1.0"
+entrypoint         = "tool_template_version.api.router:router"
+enabled_by_default = false
+
+[api]
+mount_prefix = ""
+tags         = ["tools:tool_template_version"]
+
+[capabilities]
+actions = ["check", "write"]
+
+[template]
+stamp_source = "create"
+template_manifest_hash = "758ccc68d99449165c3b2829787a8e74c104851f41e6eee7bbdc09eeef62e703"
+template_version = "2.0.0"

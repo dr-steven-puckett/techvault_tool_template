@@ -1,0 +1,39 @@
+{
+  "policies": {
+    "cli_invocation": "python -m <tool_id>.cli <command>",
+    "response_hash_enabled_default": false
+  },
+  "required_dirs": [
+    "docs",
+    "docs/prompts",
+    "tests",
+    "<tool_id>/api",
+    "<tool_id>/cli",
+    "<tool_id>/core"
+  ],
+  "required_docs": [
+    "TOOL_*_EXECUTION_PLAN.md",
+    "TOOL_*_ROADMAP.md",
+    "TOOL_*_SOT.md"
+  ],
+  "required_prompts": [
+    "docs/prompts/00_scaffold_repo.md",
+    "docs/prompts/01_contracts_and_determinism.md",
+    "docs/prompts/02_catalog_loader.md",
+    "docs/prompts/03_service_layer_ordering.md",
+    "docs/prompts/04_api_interface.md",
+    "docs/prompts/05_openapi_snapshot.md",
+    "docs/prompts/06_determinism_and_hash_tests.md",
+    "docs/prompts/07_final_gate.md",
+    "docs/prompts/08_cli_interface.md",
+    "docs/prompts/09_release_readiness.md",
+    "docs/prompts/10_sot_invariant_check.md",
+    "docs/prompts/README.md"
+  ],
+  "required_root_files": [
+    "README.md",
+    "openapi.snapshot.json",
+    "tool.toml"
+  ],
+  "template_version": "2.0.0"
+}
