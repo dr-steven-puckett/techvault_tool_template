@@ -14,7 +14,7 @@ _TOOLS_DIR = Path(__file__).resolve().parent.parent
 if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
-from tool_common.stamp import compute_manifest_sha256, write_stamp  # type: ignore[import-untyped]  # noqa: E402
+from tool_common.stamp import compute_manifest_sha256, write_stamp  # type: ignore  # noqa: E402
 
 
 REQUIRED_TEMPLATE_FILES = [
@@ -220,10 +220,19 @@ def create_scaffold(base_tools_dir: Path, template_root: Path, tool_id: str) -> 
     manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
     template_version = manifest_data.get("template_version", "unknown")
     manifest_hash = compute_manifest_sha256(manifest_path)
-    write_stamp(target_root / "tool.toml", template_version, manifest_hash, "create")
+    write_stamp(
+        target_root / "tool.toml",
+        template_version=template_version,
+        template_manifest_hash=manifest_hash,
+        stamp_source="create",
+    )
 
     write_file(target_root / "README.md", render_readme(tool_id))
     write_file(target_root / "openapi.snapshot.json", "{}\n")
+
+    # Copy the manifest into the tool repo root so template-check can use it
+    # without requiring access to the tv_tool_template workspace.
+    shutil.copy2(manifest_path, target_root / "TEMPLATE_MANIFEST.json")
 
     copy_template_docs(template_root, target_root, tool_id)
     copy_prompt_pack(template_root, target_root)
