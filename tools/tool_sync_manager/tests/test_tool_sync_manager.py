@@ -10,9 +10,11 @@ from typing import Any
 import pytest
 
 # Make sync importable without installation.
-sys.path.insert(0, str(Path(__file__).parents[1]))
+sys.path.insert(0, str(Path(__file__).parents[1]))   # tools/tool_sync_manager/
+sys.path.insert(0, str(Path(__file__).parents[2]))   # tools/ (for tool_common)
 
-import sync
+import sync  # type: ignore
+from tool_common.catalog import generate_catalog  # type: ignore
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -504,6 +506,185 @@ class TestSubprocessCalls:
         _run([str(_GOOD_TOOL), "--techvault-root", str(tv)])
 
         assert order == ["validate", "tests", "security", "register"]
+
+
+# ---------------------------------------------------------------------------
+# Helpers for catalog tests
+# ---------------------------------------------------------------------------
+
+
+def _make_launcher(tool_dir: Path, name: str = "techvault-tool-fake") -> None:
+    """Create a minimal techvault-tool-* launcher file in *tool_dir*."""
+    (tool_dir / name).write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+
+
+def _setup_tools_dir(base: Path, tool_names: list[str]) -> Path:
+    """Create a tools/ dir with minimal tool subdirs (launcher + optional tool.toml)."""
+    tools_dir = base / "tools"
+    tools_dir.mkdir(parents=True, exist_ok=True)
+    for name in tool_names:
+        d = tools_dir / name
+        d.mkdir()
+        _make_launcher(d)
+        (d / "tool.toml").write_text(f'tool_id = "{name}"\n', encoding="utf-8")
+    return tools_dir
+
+
+# ---------------------------------------------------------------------------
+# TestGenerateCatalog
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateCatalog:
+    def test_generate_catalog_returns_correct_schema(self, tmp_path):
+        tools_dir = _setup_tools_dir(tmp_path, ["alpha_tool", "beta_tool"])
+        result = generate_catalog(tools_dir)
+        assert result["version"] == 1
+        assert isinstance(result["tools"], list)
+
+    def test_generate_catalog_sorted_by_id(self, tmp_path):
+        """Entries are sorted by id lexicographically, regardless of fs order."""
+        # Create in reverse order; os may or may not reflect that.
+        for name in ["zebra", "alpha", "mango"]:
+            d = (tmp_path / "tools" / name)
+            d.mkdir(parents=True)
+            _make_launcher(d)
+        result = generate_catalog(tmp_path / "tools")
+        ids = [e["id"] for e in result["tools"]]
+        assert ids == sorted(ids)
+
+    def test_generate_catalog_excludes_dirs_without_launcher(self, tmp_path):
+        tools_dir = tmp_path / "tools"
+        tools_dir.mkdir()
+        # Has launcher — should be included.
+        with_launcher = tools_dir / "has_launcher"
+        with_launcher.mkdir()
+        _make_launcher(with_launcher)
+        # No launcher — should be excluded.
+        (tools_dir / "no_launcher").mkdir()
+        result = generate_catalog(tools_dir)
+        ids = [e["id"] for e in result["tools"]]
+        assert "has_launcher" in ids
+        assert "no_launcher" not in ids
+
+    def test_generate_catalog_path_uses_dirname(self, tmp_path):
+        """Path field is always tools/<dirname>, not the tool_id from tool.toml."""
+        tools_dir = tmp_path / "tools"
+        d = tools_dir / "my_dir_name"
+        d.mkdir(parents=True)
+        _make_launcher(d)
+        # Set tool_id different from dir name.
+        (d / "tool.toml").write_text('tool_id = "different_id"\n', encoding="utf-8")
+        result = generate_catalog(tools_dir)
+        assert result["tools"][0]["path"] == "tools/my_dir_name"
+
+    def test_generate_catalog_is_byte_identical_on_repeat_runs(self, tmp_path):
+        tools_dir = _setup_tools_dir(tmp_path, ["alpha", "beta", "gamma"])
+        r1 = generate_catalog(tools_dir)
+        r2 = generate_catalog(tools_dir)
+        from tool_common.report import canonical_json  # type: ignore
+        assert canonical_json(r1) == canonical_json(r2)
+
+    def test_generate_catalog_falls_back_to_dirname_on_missing_toml(self, tmp_path):
+        tools_dir = tmp_path / "tools"
+        d = tools_dir / "no_toml_tool"
+        d.mkdir(parents=True)
+        _make_launcher(d)
+        # No tool.toml created.
+        result = generate_catalog(tools_dir)
+        assert result["tools"][0]["id"] == "no_toml_tool"
+
+
+# ---------------------------------------------------------------------------
+# TestWriteCatalog
+# ---------------------------------------------------------------------------
+
+
+class TestWriteCatalog:
+    def _tools_dir_with_two_tools(self, base: Path) -> Path:
+        return _setup_tools_dir(base, ["alpha_tool", "beta_tool"])
+
+    def test_write_catalog_standalone_exits_0(self, tmp_path, monkeypatch):
+        """--write-catalog works without TOOL_REPO or --all."""
+        tools_dir = self._tools_dir_with_two_tools(tmp_path)
+        monkeypatch.setattr(sync, "_TOOLS_ROOT", tools_dir)
+        monkeypatch.setattr(sync, "_CATALOG_PATH", tools_dir / "tools.catalog.json")
+        monkeypatch.setattr(sync, "_CATALOG_TMP_PATH", tools_dir / "tools.catalog.json.tmp")
+        code = _run(["--write-catalog"])
+        assert code == 0
+
+    def test_write_catalog_creates_file(self, tmp_path, monkeypatch):
+        tools_dir = self._tools_dir_with_two_tools(tmp_path)
+        catalog_path = tools_dir / "tools.catalog.json"
+        monkeypatch.setattr(sync, "_TOOLS_ROOT", tools_dir)
+        monkeypatch.setattr(sync, "_CATALOG_PATH", catalog_path)
+        monkeypatch.setattr(sync, "_CATALOG_TMP_PATH", tools_dir / "tools.catalog.json.tmp")
+        _run(["--write-catalog"])
+        assert catalog_path.exists()
+
+    def test_write_catalog_is_canonical_json(self, tmp_path, monkeypatch):
+        tools_dir = self._tools_dir_with_two_tools(tmp_path)
+        catalog_path = tools_dir / "tools.catalog.json"
+        monkeypatch.setattr(sync, "_TOOLS_ROOT", tools_dir)
+        monkeypatch.setattr(sync, "_CATALOG_PATH", catalog_path)
+        monkeypatch.setattr(sync, "_CATALOG_TMP_PATH", tools_dir / "tools.catalog.json.tmp")
+        _run(["--write-catalog"])
+        content = catalog_path.read_text(encoding="utf-8")
+        from tool_common.report import canonical_json  # type: ignore
+        data = json.loads(content)
+        assert content == canonical_json(data)
+
+    def test_write_catalog_sorted_by_id(self, tmp_path, monkeypatch):
+        tools_dir = _setup_tools_dir(tmp_path, ["zebra", "alpha", "mango"])
+        catalog_path = tools_dir / "tools.catalog.json"
+        monkeypatch.setattr(sync, "_TOOLS_ROOT", tools_dir)
+        monkeypatch.setattr(sync, "_CATALOG_PATH", catalog_path)
+        monkeypatch.setattr(sync, "_CATALOG_TMP_PATH", tools_dir / "tools.catalog.json.tmp")
+        _run(["--write-catalog"])
+        data = json.loads(catalog_path.read_text(encoding="utf-8"))
+        ids = [e["id"] for e in data["tools"]]
+        assert ids == sorted(ids)
+
+    def test_write_catalog_is_byte_identical_on_repeat_runs(self, tmp_path, monkeypatch):
+        tools_dir = self._tools_dir_with_two_tools(tmp_path)
+        catalog_path_1 = tmp_path / "run1_catalog.json"
+        catalog_path_2 = tmp_path / "run2_catalog.json"
+        monkeypatch.setattr(sync, "_TOOLS_ROOT", tools_dir)
+        monkeypatch.setattr(sync, "_CATALOG_TMP_PATH", tools_dir / "tools.catalog.json.tmp")
+
+        monkeypatch.setattr(sync, "_CATALOG_PATH", catalog_path_1)
+        _run(["--write-catalog"])
+        monkeypatch.setattr(sync, "_CATALOG_PATH", catalog_path_2)
+        _run(["--write-catalog"])
+
+        assert catalog_path_1.read_text(encoding="utf-8") == catalog_path_2.read_text(encoding="utf-8")
+
+    def test_write_catalog_included_in_json_report(self, tmp_path, monkeypatch):
+        tv = _make_tv(tmp_path / "tv")
+        _patch(monkeypatch)
+        tools_dir = self._tools_dir_with_two_tools(tmp_path / "tools_src")
+        catalog_path = tools_dir / "tools.catalog.json"
+        monkeypatch.setattr(sync, "_TOOLS_ROOT", tools_dir)
+        monkeypatch.setattr(sync, "_CATALOG_PATH", catalog_path)
+        monkeypatch.setattr(sync, "_CATALOG_TMP_PATH", tools_dir / "tools.catalog.json.tmp")
+        report_path = tmp_path / "report.json"
+        _run([
+            str(_GOOD_TOOL), "--techvault-root", str(tv),
+            "--write-catalog", "--json-report", str(report_path),
+        ])
+        data = json.loads(report_path.read_text())
+        assert "catalog_write" in data
+        assert data["catalog_write"]["status"] == "ok"
+
+    def test_write_catalog_does_not_require_tool_repo_or_all(self, tmp_path, monkeypatch):
+        """--write-catalog alone (no TOOL_REPO, no --all) must succeed."""
+        tools_dir = self._tools_dir_with_two_tools(tmp_path)
+        monkeypatch.setattr(sync, "_TOOLS_ROOT", tools_dir)
+        monkeypatch.setattr(sync, "_CATALOG_PATH", tools_dir / "tools.catalog.json")
+        monkeypatch.setattr(sync, "_CATALOG_TMP_PATH", tools_dir / "tools.catalog.json.tmp")
+        # Must not return 2 (usage error).
+        code = _run(["--write-catalog"])
+        assert code != 2
 
 
 # ---------------------------------------------------------------------------

@@ -481,3 +481,93 @@ class TestPerToolErrors:
         assert code == 2
         assert report["results"][0]["exit_code"] == 2
         assert report["results"][0]["error"]["type"] == "ValueError"
+
+
+# ---------------------------------------------------------------------------
+# 11 — Steps header normalisation (B)
+# ---------------------------------------------------------------------------
+
+
+class TestStepsNormalization:
+    """Run fleet with steps supplied in different orders; assert determinism."""
+
+    def _two_tool_catalog(self, tmp_path: Path) -> tuple[Path, Path]:
+        tools_base = tmp_path / "tools"
+        for tid in ["alpha_tool", "beta_tool"]:
+            _make_tool_dir(tools_base, tid)
+        catalog_path = _make_catalog(
+            tmp_path,
+            [
+                {"id": "alpha_tool", "path": "tools/alpha_tool"},
+                {"id": "beta_tool", "path": "tools/beta_tool"},
+            ],
+        )
+        manifest = _make_manifest(tmp_path)
+        return catalog_path, manifest
+
+    def test_report_header_steps_is_sorted_regardless_of_input_order(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog_path, manifest = self._two_tool_catalog(tmp_path)
+        monkeypatch.setattr(fleet, "_WORKSPACE_ROOT", tmp_path)
+        monkeypatch.setattr(fleet, "_step_template_check", lambda tp, mp, s: ({}, 0))
+        monkeypatch.setattr(fleet, "_step_template_version_check", lambda tp, mp, s: ({}, 0))
+
+        # Pass steps in reversed order.
+        report_rev, _ = run_fleet(
+            catalog_path=catalog_path,
+            manifest_path=manifest,
+            strict=False,
+            steps=["template-version-check", "template-check"],
+        )
+        # Pass steps in sorted order.
+        report_sorted, _ = run_fleet(
+            catalog_path=catalog_path,
+            manifest_path=manifest,
+            strict=False,
+            steps=["template-check", "template-version-check"],
+        )
+
+        assert report_rev["steps"] == sorted(["template-version-check", "template-check"])
+        assert report_rev["steps"] == report_sorted["steps"]
+
+    def test_execution_order_matches_sorted_steps(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog_path, manifest = self._two_tool_catalog(tmp_path)
+        monkeypatch.setattr(fleet, "_WORKSPACE_ROOT", tmp_path)
+        monkeypatch.setattr(fleet, "_step_template_check", lambda tp, mp, s: ({}, 0))
+        monkeypatch.setattr(fleet, "_step_template_version_check", lambda tp, mp, s: ({}, 0))
+
+        report, _ = run_fleet(
+            catalog_path=catalog_path,
+            manifest_path=manifest,
+            strict=False,
+            steps=["template-version-check", "template-check"],  # reversed input
+        )
+
+        actual_pairs = [(r["tool_id"], r["step"]) for r in report["results"]]
+        assert actual_pairs == sorted(actual_pairs)
+
+    def test_byte_identical_output_regardless_of_step_input_order(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog_path, manifest = self._two_tool_catalog(tmp_path)
+        monkeypatch.setattr(fleet, "_WORKSPACE_ROOT", tmp_path)
+        monkeypatch.setattr(fleet, "_step_template_check", lambda tp, mp, s: ({"result": "ok"}, 0))
+        monkeypatch.setattr(fleet, "_step_template_version_check", lambda tp, mp, s: ({"result": "ok"}, 0))
+
+        report_a, _ = run_fleet(
+            catalog_path=catalog_path,
+            manifest_path=manifest,
+            strict=False,
+            steps=["template-check", "template-version-check"],
+        )
+        report_b, _ = run_fleet(
+            catalog_path=catalog_path,
+            manifest_path=manifest,
+            strict=False,
+            steps=["template-version-check", "template-check"],  # reversed
+        )
+
+        assert canonical_json(report_a) == canonical_json(report_b)

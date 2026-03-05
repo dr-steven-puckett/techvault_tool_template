@@ -2,9 +2,25 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+
+# ---------------------------------------------------------------------------
+# Bootstrap: ensure tools/ is on sys.path so tool_common is importable
+# whether run directly, via the shell-script shim, or via pytest.
+# ---------------------------------------------------------------------------
+_HERE = Path(__file__).resolve().parent          # tools/tool_template_validator/
+_TOOLS_ROOT = _HERE.parent                       # tools/
+_CATALOG_PATH = _TOOLS_ROOT / "tools.catalog.json"
+
+for _p in (str(_TOOLS_ROOT), str(_HERE)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from tool_common.catalog import generate_catalog, load_catalog  # type: ignore  # noqa: E402
+from tool_common.report import canonical_json                    # type: ignore  # noqa: E402
 
 
 @dataclass
@@ -211,7 +227,7 @@ def print_report(repo_path: Path, results: list[CheckResult], compliant: bool) -
     print(f"Final Compliance: {'PASS' if compliant else 'FAIL'}")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="techvault-tool-validate",
         description="Validate a TechVault tool repository against template SOT requirements.",
@@ -219,19 +235,115 @@ def main() -> int:
     parser.add_argument(
         "repo_path",
         nargs="?",
-        default=".",
-        help="Path to the repository to validate (default: current directory).",
+        default=None,
+        help="Path to the repository to validate (optional when --check-catalog is used).",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--check-catalog",
+        action="store_true",
+        default=False,
+        help=(
+            "Generate the expected tools.catalog.json in-memory and compare it "
+            "byte-for-byte with the file on disk.  Outputs a deterministic JSON "
+            "result.  Exit 0 = match, 1 = mismatch / file missing, 2 = error."
+        ),
+    )
+    args = parser.parse_args(argv)
 
-    repo = Path(args.repo_path).resolve()
-    if not repo.exists() or not repo.is_dir():
-        print(f"Repository path is not a directory: {repo}")
-        return 1
+    if not args.repo_path and not args.check_catalog:
+        parser.print_usage(sys.stderr)
+        print("error: provide REPO_PATH or --check-catalog (or both).", file=sys.stderr)
+        return 2
 
-    results, compliant = run_validation(repo)
-    print_report(repo, results, compliant)
-    return 0 if compliant else 1
+    exit_code = 0
+
+    if args.repo_path:
+        repo = Path(args.repo_path).resolve()
+        if not repo.exists() or not repo.is_dir():
+            print(f"Repository path is not a directory: {repo}")
+            return 1
+        results, compliant = run_validation(repo)
+        print_report(repo, results, compliant)
+        if not compliant:
+            exit_code = 1
+
+    if args.check_catalog:
+        catalog_result = check_catalog(_TOOLS_ROOT, _CATALOG_PATH)
+        print(canonical_json(catalog_result), end="")
+        if catalog_result["status"] != "match":
+            exit_code = max(exit_code, 1)
+
+    return exit_code
+
+
+def check_catalog(tools_root: Path, catalog_path: Path) -> dict:
+    """Compare generated catalog against the file at *catalog_path*.
+
+    Parameters
+    ----------
+    tools_root:
+        The ``tools/`` directory to scan for tool dirs.
+    catalog_path:
+        Path to the existing ``tools.catalog.json`` file.
+
+    Returns
+    -------
+    dict with keys:
+        ``status``         -- ``"match"`` | ``"mismatch"`` | ``"file_missing"`` | ``"error"``
+        ``catalog_path``   -- str path of the checked file
+        ``catalog_mismatch`` -- True if content differs (only when status=mismatch)
+        ``expected_path``  -- str path (same as catalog_path; for report clarity)
+        ``first_diff_index`` -- int byte index of first difference (only when status=mismatch)
+    """
+    try:
+        expected_dict = generate_catalog(tools_root)
+        expected_str = canonical_json(expected_dict)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "catalog_path": str(catalog_path),
+            "error": f"{type(exc).__name__}: {exc}",
+            "expected_path": str(catalog_path),
+            "status": "error",
+        }
+
+    if not catalog_path.is_file():
+        return {
+            "catalog_mismatch": True,
+            "catalog_path": str(catalog_path),
+            "expected_path": str(catalog_path),
+            "status": "file_missing",
+        }
+
+    try:
+        actual_str = catalog_path.read_text(encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "catalog_path": str(catalog_path),
+            "error": f"{type(exc).__name__}: {exc}",
+            "expected_path": str(catalog_path),
+            "status": "error",
+        }
+
+    if expected_str == actual_str:
+        return {
+            "catalog_path": str(catalog_path),
+            "catalog_mismatch": False,
+            "expected_path": str(catalog_path),
+            "status": "match",
+        }
+
+    # Find first differing byte index for deterministic diagnostics.
+    first_diff = next(
+        (i for i, (a, b) in enumerate(zip(expected_str, actual_str)) if a != b),
+        min(len(expected_str), len(actual_str)),
+    )
+    return {
+        "catalog_mismatch": True,
+        "catalog_path": str(catalog_path),
+        "expected_path": str(catalog_path),
+        "first_diff_index": first_diff,
+        "status": "mismatch",
+    }
 
 
 if __name__ == "__main__":

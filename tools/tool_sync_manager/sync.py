@@ -24,15 +24,30 @@ from pathlib import Path
 from typing import Sequence
 
 # ---------------------------------------------------------------------------
+# Bootstrap: ensure tools/ is on sys.path so tool_common is importable
+# whether run directly, via the shell-script shim, or via pytest.
+# ---------------------------------------------------------------------------
+_HERE = Path(__file__).resolve().parent          # tools/tool_sync_manager/
+_TOOLS_ROOT = _HERE.parent                       # tools/
+
+for _p in (str(_TOOLS_ROOT), str(_HERE)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from tool_common.catalog import generate_catalog  # type: ignore  # noqa: E402
+from tool_common.report import canonical_json     # type: ignore  # noqa: E402
+
+# ---------------------------------------------------------------------------
 # Sibling tool launcher paths (resolved relative to THIS file)
 # ---------------------------------------------------------------------------
-
-_HERE = Path(__file__).resolve().parent
-_TOOLS_ROOT = _HERE.parent   # tools/
 
 _VALIDATOR_SCRIPT  = _TOOLS_ROOT / "tool_template_validator"   / "techvault-tool-validate"
 _SECURITY_SCRIPT   = _TOOLS_ROOT / "tool_security_harness"     / "techvault-tool-security-scan"
 _REGISTRAR_SCRIPT  = _TOOLS_ROOT / "tool_registration_manager" / "techvault-tool-register"
+
+# Catalog paths (constant names for atomic write determinism)
+_CATALOG_PATH     = _TOOLS_ROOT / "tools.catalog.json"
+_CATALOG_TMP_PATH = _TOOLS_ROOT / "tools.catalog.json.tmp"
 
 # Timeouts (seconds)
 _SUBTOOL_TIMEOUT = 120
@@ -310,8 +325,9 @@ def build_json_report(
     techvault_root: Path,
     tools_dir: Path | None,
     apply: bool,
+    catalog_write: dict | None = None,
 ) -> dict:
-    return {
+    d: dict = {
         "apply": apply,
         "techvault_root": str(techvault_root),
         "tools": [
@@ -324,6 +340,9 @@ def build_json_report(
         ],
         "tools_dir": str(tools_dir) if tools_dir else None,
     }
+    if catalog_write is not None:
+        d["catalog_write"] = catalog_write
+    return d
 
 
 def write_json_report(
@@ -332,9 +351,34 @@ def write_json_report(
     tools_dir: Path | None,
     apply: bool,
     out_path: Path,
+    catalog_write: dict | None = None,
 ) -> None:
-    data = build_json_report(reports, techvault_root, tools_dir, apply)
+    data = build_json_report(reports, techvault_root, tools_dir, apply, catalog_write)
     out_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _do_write_catalog(tools_root: Path, catalog_path: Path, tmp_path: Path) -> dict:
+    """Generate catalog from *tools_root* and atomically write to *catalog_path*.
+
+    Returns a status dict with keys ``status`` (``"ok"`` or ``"error"``),
+    ``catalog_path``, and optionally ``error`` (on failure).
+    """
+    try:
+        data = generate_catalog(tools_root)
+        content = canonical_json(data)
+        tmp_path.write_text(content, encoding="utf-8")
+        tmp_path.replace(catalog_path)
+        return {
+            "catalog_path": str(catalog_path),
+            "status": "ok",
+            "tools_count": len(data["tools"]),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "catalog_path": str(catalog_path),
+            "error": f"{type(exc).__name__}: {exc}",
+            "status": "error",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -361,9 +405,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--techvault-root",
-        required=True,
+        required=False,
+        default=None,
         metavar="PATH",
-        help="Root of the TechVault project.",
+        help="Root of the TechVault project (required when syncing tools).",
     )
     parser.add_argument(
         "--tools-dir",
@@ -397,6 +442,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Write deterministic JSON report to this file.",
     )
     parser.add_argument("--verbose", action="store_true", default=False)
+    parser.add_argument(
+        "--write-catalog",
+        action="store_true",
+        default=False,
+        help=(
+            "Generate tools/tools.catalog.json from the current workspace state. "
+            "Can be used standalone (without TOOL_REPO or --all) or combined with "
+            "a sync run."
+        ),
+    )
 
     args = parser.parse_args(argv)
 
@@ -404,65 +459,92 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.tool_repo and args.all_dir:
         print("error: TOOL_REPO and --all are mutually exclusive.", file=sys.stderr)
         return 2
-    if not args.tool_repo and not args.all_dir:
+
+    # --write-catalog is allowed as a standalone action (no TOOL_REPO / --all needed).
+    sync_requested = bool(args.tool_repo or args.all_dir)
+    if not sync_requested and not args.write_catalog:
         print("error: Provide either TOOL_REPO or --all TOOLS_DIR.", file=sys.stderr)
         return 2
 
-    techvault_root = Path(args.techvault_root)
-    if not techvault_root.exists():
-        print(f"error: --techvault-root does not exist: {techvault_root}", file=sys.stderr)
+    techvault_root: Path | None = None
+    if args.techvault_root:
+        techvault_root = Path(args.techvault_root)
+        if not techvault_root.exists():
+            print(f"error: --techvault-root does not exist: {techvault_root}", file=sys.stderr)
+            return 2
+    elif sync_requested:
+        print("error: --techvault-root is required when syncing tools.", file=sys.stderr)
         return 2
 
     # ---- Discover tool repos ----
-    if args.all_dir:
-        tools_dir = Path(args.all_dir)
-        if not tools_dir.exists():
-            print(f"error: --all TOOLS_DIR does not exist: {tools_dir}", file=sys.stderr)
-            return 2
-        tool_repos = discover_tools(tools_dir)
-        if not tool_repos:
-            print("warning: no tool repos found under --all directory.", file=sys.stderr)
-        report_tools_dir: Path | None = tools_dir
-    else:
-        tool_repo = Path(args.tool_repo)
-        if not (tool_repo / "tool.toml").exists():
-            print(f"error: no tool.toml found in: {tool_repo}", file=sys.stderr)
-            return 2
-        tool_repos = [tool_repo]
-        report_tools_dir = args.tools_dir and Path(args.tools_dir)
-
-    # ---- Sync each tool ----
     reports: list[ToolReport] = []
-    mode_label = "APPLY" if args.apply else "DRY-RUN"
-    print(f"techvault-tool-sync  [{mode_label}]")
-    print(f"techvault-root: {techvault_root}")
+    report_tools_dir: Path | None = None
 
-    for tool_repo in tool_repos:
-        report = sync_one(
-            tool_repo,
-            techvault_root,
-            apply=args.apply,
-            enabled=args.enabled,
-            skip_validate=args.skip_validate,
-            skip_tests=args.skip_tests,
-            skip_security=args.skip_security,
-            skip_register=args.skip_register,
-            fail_fast=args.fail_fast,
-            verbose=args.verbose,
-        )
-        reports.append(report)
+    if sync_requested:
+        assert techvault_root is not None  # guaranteed by validation above
+        if args.all_dir:
+            tools_dir = Path(args.all_dir)
+            if not tools_dir.exists():
+                print(f"error: --all TOOLS_DIR does not exist: {tools_dir}", file=sys.stderr)
+                return 2
+            tool_repos = discover_tools(tools_dir)
+            if not tool_repos:
+                print("warning: no tool repos found under --all directory.", file=sys.stderr)
+            report_tools_dir = tools_dir
+        else:
+            tool_repo = Path(args.tool_repo)
+            if not (tool_repo / "tool.toml").exists():
+                print(f"error: no tool.toml found in: {tool_repo}", file=sys.stderr)
+                return 2
+            tool_repos = [tool_repo]
+            report_tools_dir = args.tools_dir and Path(args.tools_dir)
 
-    # ---- Print summary ----
-    print_summary(reports, args.apply)
+        # ---- Sync each tool ----
+        mode_label = "APPLY" if args.apply else "DRY-RUN"
+        print(f"techvault-tool-sync  [{mode_label}]")
+        print(f"techvault-root: {techvault_root}")
 
-    passed = overall_passed(reports)
-    print(f"\n{'=' * 60}")
-    print(f"RESULT: {'PASS' if passed else 'FAIL'}")
+        for tool_repo in tool_repos:
+            report = sync_one(
+                tool_repo,
+                techvault_root,
+                apply=args.apply,
+                enabled=args.enabled,
+                skip_validate=args.skip_validate,
+                skip_tests=args.skip_tests,
+                skip_security=args.skip_security,
+                skip_register=args.skip_register,
+                fail_fast=args.fail_fast,
+                verbose=args.verbose,
+            )
+            reports.append(report)
+
+        # ---- Print summary ----
+        print_summary(reports, args.apply)
+
+        passed = overall_passed(reports)
+        print(f"\n{'=' * 60}")
+        print(f"RESULT: {'PASS' if passed else 'FAIL'}")
+    else:
+        passed = True
+
+    # ---- Write catalog ----
+    catalog_write_result: dict | None = None
+    if args.write_catalog:
+        catalog_write_result = _do_write_catalog(_TOOLS_ROOT, _CATALOG_PATH, _CATALOG_TMP_PATH)
+        status = catalog_write_result["status"]
+        print(f"\nCatalog write: {status.upper()} → {_CATALOG_PATH}")
+        if status == "error":
+            passed = False
 
     # ---- JSON report ----
     if args.json_report:
         out_path = Path(args.json_report)
-        write_json_report(reports, techvault_root, report_tools_dir, args.apply, out_path)
+        effective_root = techvault_root if techvault_root is not None else Path(".")
+        write_json_report(
+            reports, effective_root, report_tools_dir, args.apply, out_path,
+            catalog_write=catalog_write_result,
+        )
         print(f"JSON report written: {out_path}")
 
     return 0 if passed else 1

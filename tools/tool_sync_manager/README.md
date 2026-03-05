@@ -35,6 +35,15 @@ python tools/tool_sync_manager/techvault-tool-sync \
   --all tools/ \
   --techvault-root /path/to/TechVault \
   --json-report /tmp/sync_report.json
+
+# (Re)generate tools.catalog.json standalone
+python tools/tool_sync_manager/techvault-tool-sync --write-catalog
+
+# Sync all tools and update the catalog in one shot
+python tools/tool_sync_manager/techvault-tool-sync \
+  --all tools/ \
+  --techvault-root /path/to/TechVault \
+  --write-catalog
 ```
 
 ## Flags
@@ -53,6 +62,7 @@ python tools/tool_sync_manager/techvault-tool-sync \
 | `--skip-register` | false | Skip registration step |
 | `--fail-fast` | false | Stop processing a tool after its first failed step |
 | `--json-report PATH` | — | Write deterministic JSON report to this file |
+| `--write-catalog` | false | Regenerate `tools/tools.catalog.json` from the current workspace. Can be used standalone (no `TOOL_REPO` / `--all` needed) or combined with a sync run. Atomic write via `.tmp` rename. |
 | `--verbose` | false | Print captured stdout/stderr for each step |
 
 ## Dry-run vs --apply
@@ -76,6 +86,7 @@ All other steps (validate, tests, security) are always read-only.
   "apply": false,
   "techvault_root": "/path/to/TechVault",
   "tools_dir": null,
+  "catalog_write": {"catalog_path": "tools/tools.catalog.json", "status": "ok", "tools_count": 8},
   "tools": [
     {
       "path": "tools/my_tool",
