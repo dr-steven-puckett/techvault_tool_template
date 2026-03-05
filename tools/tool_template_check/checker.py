@@ -30,12 +30,7 @@ for _p in (str(_TOOLS_DIR), str(_TOOL_DIR)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from tool_common.stamp import (  # noqa: E402  # type: ignore
-    StampValidationError,
-    compute_manifest_sha256,
-    read_tool_toml,
-    validate_stamp,
-)
+from tool_common.stamp import StampValidationError, compute_manifest_sha256, read_tool_toml, validate_stamp  # type: ignore  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants

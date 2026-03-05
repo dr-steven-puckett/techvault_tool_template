@@ -41,6 +41,26 @@ Output is a single canonical JSON object (keys sorted, compact):
 }
 ```
 
+## Finding Codes
+
+See `docs/TOOL_TOML_SPEC.md §7.4` for the base code table. This tool emits all spec codes
+plus the tool-level extensions below.
+
+| Code | Level | Description |
+|---|---|---|
+| `STAMP_MISSING` | WARN | `[template]` section absent from `tool.toml` |
+| `STAMP_KEY_MISSING` | WARN | A required key is absent from `[template]` |
+| `HASH_INVALID` | ERROR | `template_manifest_hash` does not match `^[0-9a-f]{64}$` |
+| `HASH_MISMATCH` | ERROR | Recorded hash does not equal computed hash |
+| `STAMP_SOURCE_INVALID` | ERROR | `stamp_source` value not in `{"create","patch","manual"}` |
+| `VERSION_MISMATCH` | ERROR | `template_version` differs from manifest's `template_version` field |
+| `TOML_MISSING` | ERROR | `tool.toml` not found |
+| `MANIFEST_MISSING` | ERROR | `TEMPLATE_MANIFEST.json` cannot be read or parsed |
+| `MANIFEST_INVALID` | ERROR | `TEMPLATE_MANIFEST.json` is missing the required `template_version` field |
+| `UNHANDLED_EXCEPTION` | ERROR | Unexpected internal error (I/O failure or code bug) |
+
+`MANIFEST_INVALID` and `UNHANDLED_EXCEPTION` are tool-level extension codes not in `docs/TOOL_TOML_SPEC.md §7.4`. They are stable string codes and will not be renamed.
+
 ## Responsibility Boundary
 
 | Tool | Responsibility |
